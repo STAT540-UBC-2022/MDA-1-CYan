@@ -1,0 +1,453 @@
+---
+title: "Mini Data Analysis Milestone 2"
+output: github_document
+---
+
+*To complete this milestone, you can edit [this `.rmd` file](https://raw.githubusercontent.com/UBC-STAT/stat545.stat.ubc.ca/master/content/mini-project/mini-project-2.Rmd) directly. Fill in the sections that are commented out with `<!--- start your work here--->`. When you are done, make sure to knit to an `.md` file by changing the output in the YAML header to `github_document`, before submitting a tagged release on canvas.*
+
+# Welcome to your second (and last) milestone in your mini data analysis project!
+
+In Milestone 1, you explored your data, came up with research questions, and obtained some results by making summary tables and graphs. This time, we will first explore more in depth the concept of *tidy data.* Then, you'll be sharpening some of the results you obtained from your previous milestone by:
+
+-   Manipulating special data types in R: factors and/or dates and times.
+-   Fitting a model object to your data, and extract a result.
+-   Reading and writing data as separate files.
+
+**NOTE**: The main purpose of the mini data analysis is to integrate what you learn in class in an analysis. Although each milestone provides a framework for you to conduct your analysis, it's possible that you might find the instructions too rigid for your data set. If this is the case, you may deviate from the instructions -- just make sure you're demonstrating a wide range of tools and techniques taught in this class.
+
+# Instructions
+
+**To complete this milestone**, edit [this very `.Rmd` file](https://raw.githubusercontent.com/UBC-STAT/stat545.stat.ubc.ca/master/content/mini-project/mini-project-2.Rmd) directly. Fill in the sections that are tagged with `<!--- start your work here--->`.
+
+**To submit this milestone**, make sure to knit this `.Rmd` file to an `.md` file by changing the YAML output settings from `output: html_document` to `output: github_document`. Commit and push all of your work to your mini-analysis GitHub repository, and tag a release on GitHub. Then, submit a link to your tagged release on canvas.
+
+**Points**: This milestone is worth 55 points (compared to the 45 points of the Milestone 1): 45 for your analysis, and 10 for your entire mini-analysis GitHub repository. Details follow.
+
+**Research Questions**: In Milestone 1, you chose two research questions to focus on. Wherever realistic, your work in this milestone should relate to these research questions whenever we ask for justification behind your work. In the case that some tasks in this milestone don't align well with one of your research questions, feel free to discuss your results in the context of a different research question.
+
+# Learning Objectives
+
+By the end of this milestone, you should:
+
+-   Understand what *tidy* data is, and how to create it using `tidyr`.
+-   Generate a reproducible and clear report using R Markdown.
+-   Manipulating special data types in R: factors and/or dates and times.
+-   Fitting a model object to your data, and extract a result.
+-   Reading and writing data as separate files.
+
+# Setup
+
+Begin by loading your data and the tidyverse package below:
+
+```{r, message = FALSE}
+library(datateachr) # <- might contain the data you picked!
+library(tidyverse)
+```
+
+# Task 1: Tidy your data (15 points)
+
+In this task, we will do several exercises to reshape our data. The goal here is to understand how to do this reshaping with the `tidyr` package.
+
+A reminder of the definition of *tidy* data:
+
+-   Each row is an **observation**
+-   Each column is a **variable**
+-   Each cell is a **value**
+
+*Tidying* data is sometimes necessary because it can simplify computation. Other times it can be nice to organize data so that it can be easier to understand when read manually.
+
+### 1.1 (2.5 points)
+
+Based on the definition above, can you identify if your data is tidy or untidy? Go through all your columns, or if you have \>8 variables, just pick 8, and explain whether the data is untidy or tidy.
+
+<!--------------------------- Start your work below --------------------------->
+
+The dataset I picked was apt_buildings.
+
+```{r}
+head(apt_buildings)
+```
+
+This dataset is not tidy because some of the cells contain more than one value. Every row is an observation, and every column is a variable, but the columns `bike_parking`, `parking_type`, `amenities`, and `facilities_available` contain multiple values in some of the cells. 
+
+<!----------------------------------------------------------------------------->
+
+### 1.2 (5 points)
+
+Now, if your data is tidy, untidy it! Then, tidy it back to it's original state.
+
+If your data is untidy, then tidy it! Then, untidy it back to it's original state.
+
+Be sure to explain your reasoning for this task. Show us the "before" and "after".
+
+<!--------------------------- Start your work below --------------------------->
+
+#### Tidying and Untidying the `bike_parking` Column
+
+The steps I will take to tidy the data are:
+
+1. Replace the fields with "Not Available" with "0 indoor parking spots and 0 outdoor parking spots"
+2. Create two new columns, `indoor_bike_parking_spots` and `outdoor_bike_parking_spots`
+3. Populate these columns with the correct numbers
+
+```{r}
+# so I don't alter the original data
+apt_buildings_tidy <- apt_buildings
+
+# replacing "not available"
+apt_buildings_tidy$bike_parking[which(apt_buildings_tidy$bike_parking == "Not Available")] <- "0 indoor parking spots and 0 outdoor parking spots"
+
+# creating the new columns
+apt_buildings_tidy <- apt_buildings_tidy %>%
+  separate(bike_parking, into = c("indoor_bike_parking_spots", "discard1", "discard2", "discard3", "discard4", "outdoor_bike_parking_spots"), sep = " ") %>%
+  select(-starts_with("discard"))
+head(apt_buildings_tidy)
+```
+
+To untidy the data, I will combine the two new columns to recreate the original data.
+
+```{r}
+apt_buildings_untidy <- apt_buildings_tidy %>%
+  mutate(bike_parking = paste(indoor_bike_parking_spots, "indoor parking spots and", outdoor_bike_parking_spots, "outdoor parking spots")) %>%
+  select(-indoor_bike_parking_spots, -outdoor_bike_parking_spots)
+head(apt_buildings_untidy)
+```
+
+#### Tidying and Untidying the `parking_type` Column
+
+The approach to tidying the `parking_type`, `amenities`, and `facilities_available` columns is the same, so I'll just demonstrate on one column. This process involves:
+
+1. Splitting the values in each cell by the appropriate separator
+2. Creating a column for each unique value with 1 (if the buiding has it) and 0 (if the building does not)
+
+```{r}
+apt_buildings_tidy_parking <- apt_buildings_tidy %>%
+  mutate(parking_type = strsplit(parking_type, " , ")) %>%
+  unnest(parking_type) %>%
+  group_by(id) %>%
+  count(parking_type) %>%
+  pivot_wider(names_from = parking_type, values_from = n, values_fill = list(n=0)) %>%
+  right_join(apt_buildings_tidy, by = "id") %>%
+  select(-parking_type)
+head(apt_buildings_tidy_parking)
+```
+
+To untidy, I'll do everything above, but in reverse.
+
+```{r}
+apt_buildings_untidy_parking <- apt_buildings_tidy_parking %>%
+  pivot_longer(cols = `Garage accessible thru buildg`:`Parking Deck`, names_to = "parking_type", values_to = "n") %>%
+  filter(n != 0) %>%
+  nest(data = parking_type) %>%
+  mutate(parking_type = paste(data[[1]], collapse = " , ")) %>%
+  select(-n, -data)
+head(apt_buildings_untidy_parking)
+```
+
+<!----------------------------------------------------------------------------->
+
+### 1.3 (7.5 points)
+
+Now, you should be more familiar with your data, and also have made progress in answering your research questions. Based on your interest, and your analyses, pick 2 of the 4 research questions to continue your analysis in the next four tasks:
+
+<!-------------------------- Start your work below ---------------------------->
+
+1.  How does building size impact the number of amenities and services available?
+2.  How many buildings can be considered to be accessible?
+
+<!----------------------------------------------------------------------------->
+
+Explain your decision for choosing the above two research questions.
+
+<!--------------------------- Start your work below --------------------------->
+
+I think these two research questions are the most straightforward and specific. They are also conducive to a wide variety of analyses and modelling techniques.
+
+<!----------------------------------------------------------------------------->
+
+Now, try to choose a version of your data that you think will be appropriate to answer these 2 questions. Use between 4 and 8 functions that we've covered so far (i.e. by filtering, cleaning, tidying, dropping irrelevant columns, etc.).
+
+<!--------------------------- Start your work below --------------------------->
+
+To get to a version of the dataset I can use, I will use:
+
+- `mutate` to create a new column with the number of amenities
+- `select` to select the columns to interest
+- `filter` to remove the outlier for number of units
+- functions to tidy the `amenities` column
+
+```{r}
+apt_buildings_usable <- apt_buildings %>%
+  mutate(no_amenities = ifelse(is.na(amenities), # if the value is NA, return 0
+                               0,
+                               str_count(amenities, ',') + 1)) %>% # if the value is not NA, count the number of commas and add 1
+  filter(no_of_units != max(no_of_units)) %>%
+  select(id, amenities, no_amenities, no_of_storeys, no_of_units, # amenities and size
+         barrier_free_accessibilty_entr, no_of_elevators, no_of_accessible_parking_spaces, no_barrier_free_accessible_units) # accessibility
+
+# tidying amenities
+apt_buildings_tidy <- apt_buildings %>%
+  mutate(amenities = strsplit(amenities, " , ")) %>%
+  unnest(amenities) %>%
+  group_by(id) %>%
+  count(amenities) %>%
+  pivot_wider(names_from = amenities, values_from = n, values_fill = list(n=0)) %>%
+  right_join(apt_buildings_usable, by = "id") %>%
+  select(-amenities)
+head(apt_buildings_tidy)
+```
+
+<!----------------------------------------------------------------------------->
+
+# Task 2: Special Data Types (10)
+
+For this exercise, you'll be choosing two of the three tasks below -- both tasks that you choose are worth 5 points each.
+
+But first, tasks 1 and 2 below ask you to modify a plot you made in a previous milestone. The plot you choose should involve plotting across at least three groups (whether by facetting, or using an aesthetic like colour). Place this plot below (you're allowed to modify the plot if you'd like). If you don't have such a plot, you'll need to make one. Place the code for your plot below.
+
+<!-------------------------- Start your work below ---------------------------->
+
+To do this exercise, I first need to create a factor with at least three levels. As with the last milestone, buildings can be categorized as "high", "moderate", and "low" with regards to the ratio of elevators to the number of units.
+
+```{r}
+# calculating the ratio
+apt_buildings_tidy <- apt_buildings_tidy %>%
+  mutate(unit_elevator_ratio = no_of_elevators / no_of_units,
+         unit_elevator_category = ifelse(unit_elevator_ratio <= 0.01, "low",
+                                                        ifelse(unit_elevator_ratio > 0.01 & unit_elevator_ratio <= 0.015, "moderate",
+                                                               ifelse(unit_elevator_ratio > 0.015, "high", NA)))) 
+
+# creating a plot for the number of buildings belonging to each category
+elevator_category_plot <- apt_buildings_tidy %>%
+  group_by(unit_elevator_category) %>%
+  count(unit_elevator_category) %>%
+  drop_na() %>%
+  ggplot(aes(x = unit_elevator_category, y = n)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Category (Ratio of Elevators to Units)", y = "Number of Buildings")
+elevator_category_plot
+```
+
+<!----------------------------------------------------------------------------->
+
+Now, choose two of the following tasks.
+
+1.  Produce a new plot that reorders a factor in your original plot, using the `forcats` package (3 points). Then, in a sentence or two, briefly explain why you chose this ordering (1 point here for demonstrating understanding of the reordering, and 1 point for demonstrating some justification for the reordering, which could be subtle or speculative.)
+
+2.  Produce a new plot that groups some factor levels together into an "other" category (or something similar), using the `forcats` package (3 points). Then, in a sentence or two, briefly explain why you chose this grouping (1 point here for demonstrating understanding of the grouping, and 1 point for demonstrating some justification for the grouping, which could be subtle or speculative.)
+
+3.  If your data has some sort of time-based column like a date (but something more granular than just a year):
+
+    1.  Make a new column that uses a function from the `lubridate` or `tsibble` package to modify your original time-based column. (3 points)
+
+        -   Note that you might first have to *make* a time-based column using a function like `ymd()`, but this doesn't count.
+        -   Examples of something you might do here: extract the day of the year from a date, or extract the weekday, or let 24 hours elapse on your dates.
+
+    2.  Then, in a sentence or two, explain how your new column might be useful in exploring a research question. (1 point for demonstrating understanding of the function you used, and 1 point for your justification, which could be subtle or speculative).
+
+        -   For example, you could say something like "Investigating the day of the week might be insightful because penguins don't work on weekends, and so may respond differently".
+
+<!-------------------------- Start your work below ---------------------------->
+
+**Task Number**: 1
+
+I want to reorder the categories so that they are ascending (low to high). This reordering makes more sense than the order shown above.
+
+```{r}
+# setting an order for the factor
+apt_buildings_tidy$unit_elevator_category <- factor(apt_buildings_tidy$unit_elevator_category, ordered = T,
+                                                    levels = c("low", "moderate", "high"))
+
+elevator_category_plot_o <- apt_buildings_tidy %>%
+  group_by(unit_elevator_category) %>%
+  count(unit_elevator_category) %>%
+  drop_na() %>%
+  ggplot(aes(x = unit_elevator_category, y = n)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Category (Ratio of Elevators to Units)", y = "Number of Buildings")
+elevator_category_plot_o
+```
+
+<!----------------------------------------------------------------------------->
+
+<!-------------------------- Start your work below ---------------------------->
+
+**Task Number**: 2
+
+I will change the categories of amenities to be outdoor pool, indoor pool, or other because I am interested in how many buildings have pools as opposed to other amenities. 
+
+```{r}
+# creating and compressing factor levels
+apt_pools <- apt_buildings_tidy %>%
+  pivot_longer(cols = `Outdoor rec facilities`:`Child play area`, names_to = "amenities", values_to = "n") %>%
+  filter(n != 0)
+
+apt_pools$amenities <- fct_collapse(as.factor(apt_pools$amenities),
+                                    indoor_pool = c("Indoor pool"),
+                                    outdoor_pool = c("Outdoor pool"),
+                                    group_other = T)
+
+pool_other_plot <- apt_pools %>%
+  group_by(amenities) %>%
+  count(amenities) %>%
+  drop_na() %>%
+  ggplot(aes(x = amenities, y = n)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Amenity Type", y = "Number of Buildings")
+pool_other_plot
+```
+
+<!----------------------------------------------------------------------------->
+
+# Task 3: Modelling
+
+## 3.0 (no points)
+
+Pick a research question, and pick a variable of interest (we'll call it "Y") that's relevant to the research question. Indicate these.
+
+<!-------------------------- Start your work below ---------------------------->
+
+**Research Question**: How does building size impact the number of amenities and services available?
+
+**Variable of interest**: Number of amenities
+
+<!----------------------------------------------------------------------------->
+
+## 3.1 (5 points)
+
+Fit a model or run a hypothesis test that provides insight on this variable with respect to the research question. Store the model object as a variable, and print its output to screen. We'll omit having to justify your choice, because we don't expect you to know about model specifics in STAT 545.
+
+-   **Note**: It's OK if you don't know how these models/tests work. Here are some examples of things you can do here, but the sky's the limit.
+
+    -   You could fit a model that makes predictions on Y using another variable, by using the `lm()` function.
+    -   You could test whether the mean of Y equals 0 using `t.test()`, or maybe the mean across two groups are different using `t.test()`, or maybe the mean across multiple groups are different using `anova()` (you may have to pivot your data for the latter two).
+    -   You could use `lm()` to test for significance of regression.
+
+<!-------------------------- Start your work below ---------------------------->
+
+I will fit a model that tries to predict the number of amenities based on the number of units in the building.
+
+```{r}
+model <- lm(no_amenities ~ no_of_units, apt_buildings_tidy)
+model
+```
+
+
+<!----------------------------------------------------------------------------->
+
+## 3.2 (5 points)
+
+Produce something relevant from your fitted model: either predictions on Y, or a single value like a regression coefficient or a p-value.
+
+-   Be sure to indicate in writing what you chose to produce.
+-   Your code should either output a tibble (in which case you should indicate the column that contains the thing you're looking for), or the thing you're looking for itself.
+-   Obtain your results using the `broom` package if possible. If your model is not compatible with the broom function you're needing, then you can obtain your results by some other means, but first indicate which broom function is not compatible.
+
+<!-------------------------- Start your work below ---------------------------->
+
+I will produce the p-value, which will be in the `p.value` column of my output.
+
+```{r}
+output <- broom::tidy(model)
+output
+```
+
+<!----------------------------------------------------------------------------->
+
+# Task 4: Reading and writing data
+
+Get set up for this exercise by making a folder called `output` in the top level of your project folder / repository. You'll be saving things there.
+
+## 4.1 (5 points)
+
+Take a summary table that you made from Milestone 1 (Task 4.2), and write it as a csv file in your `output` folder. Use the `here::here()` function.
+
+-   **Robustness criteria**: You should be able to move your Mini Project repository / project folder to some other location on your computer, or move this very Rmd file to another location within your project repository / folder, and your code should still work.
+-   **Reproducibility criteria**: You should be able to delete the csv file, and remake it simply by knitting this Rmd file.
+
+<!-------------------------- Start your work below ---------------------------->
+
+I will use a summary table that relates the number of units to visitor parking availability. 
+
+```{r}
+# summary table
+units_across_vis_parking <- apt_buildings %>%
+  group_by(visitor_parking) %>%
+  summarize(Range_Minimum = range(no_of_units)[1],
+            Range_Maximum = range(no_of_units)[2],
+            Mean = mean(no_of_units),
+            StDev = sd(no_of_units),
+            Median = median(no_of_units))
+units_across_vis_parking
+
+# saving file
+write_csv(units_across_vis_parking, here::here("output", "summary_table.csv"))
+```
+
+<!----------------------------------------------------------------------------->
+
+## 4.2 (5 points)
+
+Write your model object from Task 3 to an R binary file (an RDS), and load it again. Be sure to save the binary file in your `output` folder. Use the functions `saveRDS()` and `readRDS()`.
+
+-   The same robustness and reproducibility criteria as in 3.1 apply here.
+
+<!-------------------------- Start your work below ---------------------------->
+
+```{r}
+# writing
+saveRDS(model, here::here("output", "model.rds"))
+
+# loading
+model <- readRDS(here::here("output", "model.rds"))
+model
+```
+
+<!----------------------------------------------------------------------------->
+
+# Tidy Repository
+
+Now that this is your last milestone, your entire project repository should be organized. Here are the criteria we're looking for.
+
+## Main README (3 points)
+
+There should be a file named `README.md` at the top level of your repository. Its contents should automatically appear when you visit the repository on GitHub.
+
+Minimum contents of the README file:
+
+-   In a sentence or two, explains what this repository is, so that future-you or someone else stumbling on your repository can be oriented to the repository.
+-   In a sentence or two (or more??), briefly explains how to engage with the repository. You can assume the person reading knows the material from STAT 545A. Basically, if a visitor to your repository wants to explore your project, what should they know?
+
+Once you get in the habit of making README files, and seeing more README files in other projects, you'll wonder how you ever got by without them! They are tremendously helpful.
+
+## File and Folder structure (3 points)
+
+You should have at least four folders in the top level of your repository: one for each milestone, and one output folder. If there are any other folders, these are explained in the main README.
+
+Each milestone document is contained in its respective folder, and nowhere else.
+
+Every level-1 folder (that is, the ones stored in the top level, like "Milestone1" and "output") has a `README` file, explaining in a sentence or two what is in the folder, in plain language (it's enough to say something like "This folder contains the source for Milestone 1").
+
+## Output (2 points)
+
+All output is recent and relevant:
+
+-   All Rmd files have been `knit`ted to their output, and all data files saved from Task 4 above appear in the `output` folder.
+-   All of these output files are up-to-date -- that is, they haven't fallen behind after the source (Rmd) files have been updated.
+-   There should be no relic output files. For example, if you were knitting an Rmd to html, but then changed the output to be only a markdown file, then the html file is a relic and should be deleted.
+
+Our recommendation: delete all output files, and re-knit each milestone's Rmd file, so that everything is up to date and relevant.
+
+PS: there's a way where you can run all project code using a single command, instead of clicking "knit" three times. More on this in STAT 545B!
+
+## Error-free code (1 point)
+
+This Milestone 1 document knits error-free, and the Milestone 2 document knits error-free.
+
+## Tagged release (1 point)
+
+You've tagged a release for Milestone 1, and you've tagged a release for Milestone 2.
+
+### Attribution
+
+Thanks to Victor Yuan for mostly putting this together.
